@@ -212,4 +212,22 @@ final class MarkdownRendererTests: XCTestCase {
     func testHTMLTagsStripped() {
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2("see <b>this</b>"), "see this")
     }
+
+    func testHTMLTagsPreservedInsideCode() {
+        // <url> inside backtick code must NOT be stripped
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("`git clone <url>`"), "`git clone <url>`")
+    }
+
+    func testCheckboxChecked() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("- [x] done"), "✅ done")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("* [x] done"), "✅ done")
+    }
+
+    func testCheckboxUnchecked() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("- [ ] todo"), "⬜ todo")
+    }
+
+    func testCheckboxDoesNotAffectRegularList() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("- item"), "• item")
+    }
 }

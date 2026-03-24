@@ -48,6 +48,15 @@ public enum MarkdownRenderer {
             return ">\(processInline(String(line[r])))"
         }
 
+        // Checkbox: - [x] / - [ ]  (must check before unordered list)
+        if let m = try? NSRegularExpression(pattern: #"^[-*+] \[(x| )\] (.*)"#)
+                        .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+           let checkR = Range(m.range(at: 1), in: line),
+           let textR  = Range(m.range(at: 2), in: line) {
+            let checked = String(line[checkR]) == "x"
+            return "\(checked ? "✅" : "⬜") \(processInline(String(line[textR])))"
+        }
+
         // Unordered list: - * +
         if let m = try? NSRegularExpression(pattern: #"^[-*+] (.*)"#)
                         .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
@@ -85,10 +94,10 @@ public enum MarkdownRenderer {
     private static func processInline(_ text: String) -> String {
         var store = PlaceholderStore()
         var s = text
-        // Strip HTML tags before any other processing
-        s = regexReplace(#"</?[a-zA-Z][^>]*>"#, in: s) { _ in "" }
         s = extractImages(s, store: &store)  // step 1
         s = extractCode(s, store: &store)    // step 2
+        // Strip HTML tags AFTER code extraction so <url> inside backticks is preserved
+        s = regexReplace(#"</?[a-zA-Z][^>]*>"#, in: s) { _ in "" }
         s = extractLinks(s, store: &store)       // step 3
         s = extractBoldItalic(s, store: &store)  // step 4
         s = extractBold(s, store: &store)        // step 5
