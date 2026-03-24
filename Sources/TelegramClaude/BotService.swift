@@ -1,4 +1,5 @@
 import Foundation
+import TelegramClaudeCore
 
 struct ChatMessage: Identifiable {
     let id = UUID()
@@ -129,20 +130,17 @@ class BotService: ObservableObject {
               let chatId = chat["id"] as? Int64,
               let from = message["from"] as? [String: Any] else { return }
 
-        // text 对语音/图片消息可能为空，允许继续处理
         let text = message["text"] as? String ?? ""
 
         let userId = "\(from["id"] ?? "")"
         let allowed = Config.allowedUserIDs
         guard allowed.isEmpty || allowed.contains(userId) else { return }
 
-        // 并发保护：claude 进程运行期间拒绝新消息
         guard !isProcessing else {
             await sendMessage(token: token, chatId: chatId, text: L("⏳ Claude is processing. Please wait.", "⏳ Claude 正在处理中，请等待"))
             return
         }
 
-        // 本地命令处理
         if text == "/new" || text == "/reset" {
             await clearSession()
             await sendMessage(token: token, chatId: chatId, text: L("✅ Session reset", "✅ 会话已重置"))
@@ -153,7 +151,6 @@ class BotService: ObservableObject {
             return
         }
 
-        // 处理图片
         var claudeInput = text
         if let photos = message["photo"] as? [[String: Any]],
            let largest = photos.max(by: { ($0["file_size"] as? Int ?? 0) < ($1["file_size"] as? Int ?? 0) }),
@@ -162,12 +159,10 @@ class BotService: ObservableObject {
             if let imgURL = try? await MediaHandler.downloadFile(token: token, fileId: fileId) {
                 let caption = (message["caption"] as? String).map { "\n\n" + L("User said: \($0)", "用户说：\($0)") } ?? ""
                 claudeInput = L("Please use the Read tool to view this image: \(imgURL.path)\(caption)", "请用 Read 工具查看这张图片：\(imgURL.path)\(caption)")
-                // 回复后删除临时文件（在 claudeInput 使用完之后）
                 Task { try? await Task.sleep(nanoseconds: 60_000_000_000); try? FileManager.default.removeItem(at: imgURL) }
             }
         }
 
-        // 处理语音 — 发一条占位消息并复用 id，避免两条状态消息
         var placeholderMsgId: Int? = nil
         if let voice = message["voice"] as? [String: Any],
            let fileId = voice["file_id"] as? String,
@@ -195,7 +190,6 @@ class BotService: ObservableObject {
         messages.append(ChatMessage(role: .user, text: claudeInput, time: Date()))
         if messages.count > 50 { messages.removeFirst() }
 
-        // 语音：复用转录占位消息；文字/图片：新发占位消息
         if let vid = placeholderMsgId {
             await editMessage(token: token, chatId: chatId, messageId: vid,
                               text: L("⏳ Processing...", "⏳ 处理中..."))
@@ -204,7 +198,6 @@ class BotService: ObservableObject {
                                                        text: L("⏳ Processing...", "⏳ 处理中..."))
         }
 
-        // 流式调用 Claude
         var lastEditedText = ""
         var lastEditTime = Date()
 
@@ -250,22 +243,17 @@ class BotService: ObservableObject {
         let dAPI = result?.durationAPIms ?? 0
         let dWall = result?.durationWallms ?? 0
 
-        sessionCostUSD = cost          // total_cost_usd 是全局累计值，直接取最新
+        sessionCostUSD = cost
         sessionInputTokens += inTokens
         sessionOutputTokens += outTokens
         sessionCacheReadTokens += cacheRead
         sessionCacheWriteTokens += cacheWrite
-        sessionDurationAPIms = dAPI    // duration_api_ms 是全局累计值，直接取最新
-        sessionDurationWallms = dWall  // duration_ms 是全局累计值，直接取最新
+        sessionDurationAPIms = dAPI
+        sessionDurationWallms = dWall
 
-        // 最终编辑为完整回复
         let isSlashCommand = claudeInput.hasPrefix("/")
         let displayText = finalText.isEmpty ? (isSlashCommand ? L("✅ Done", "✅ 执行完成") : L("(no response)", "（无回复）")) : finalText
-        if let msgId = placeholderMsgId {
-            await editMessage(token: token, chatId: chatId, messageId: msgId, text: displayText)
-        } else {
-            await sendMessage(token: token, chatId: chatId, text: displayText)
-        }
+        await sendOrEditFinal(token: token, chatId: chatId, messageId: placeholderMsgId, text: displayText)
 
         messages.append(ChatMessage(role: .assistant, text: displayText, time: Date()))
         if messages.count > 50 { messages.removeFirst() }
@@ -279,17 +267,7 @@ class BotService: ObservableObject {
 
     private func sendMessageGetId(token: String, chatId: Int64, text: String) async -> Int? {
         let truncated = String(text.prefix(4096))
-        // 先尝试 MarkdownV2，失败 fallback 纯文本
-        if let mdv2 = MarkdownConverter.shared.convert(truncated),
-           let msgId = await _sendRaw(token: token, chatId: chatId, text: mdv2, parseMode: "MarkdownV2") {
-            return msgId
-        }
-        return await _sendRaw(token: token, chatId: chatId, text: truncated, parseMode: nil)
-    }
-
-    private func _sendRaw(token: String, chatId: Int64, text: String, parseMode: String?) async -> Int? {
-        var body: [String: Any] = ["chat_id": chatId, "text": text]
-        if let mode = parseMode { body["parse_mode"] = mode }
+        var body: [String: Any] = ["chat_id": chatId, "text": truncated]
         var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/sendMessage")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -303,27 +281,55 @@ class BotService: ObservableObject {
 
     private func editMessage(token: String, chatId: Int64, messageId: Int, text: String) async {
         let truncated = String(text.prefix(4096))
-        // 先尝试 MarkdownV2，失败 fallback 纯文本
-        if let mdv2 = MarkdownConverter.shared.convert(truncated) {
-            if await _editRaw(token: token, chatId: chatId, messageId: messageId, text: mdv2, parseMode: "MarkdownV2") { return }
-        }
-        _ = await _editRaw(token: token, chatId: chatId, messageId: messageId, text: truncated, parseMode: nil)
+        var body: [String: Any] = ["chat_id": chatId, "message_id": messageId, "text": truncated]
+        var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/editMessageText")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
     }
 
-    @discardableResult
-    private func _editRaw(token: String, chatId: Int64, messageId: Int, text: String, parseMode: String?) async -> Bool {
-        var body: [String: Any] = ["chat_id": chatId, "message_id": messageId, "text": text]
-        if let mode = parseMode { body["parse_mode"] = mode }
+    /// Sends the final response as MarkdownV2. Falls back to plain text if Telegram rejects it.
+    private func sendOrEditFinal(token: String, chatId: Int64, messageId: Int?, text: String) async {
+        let mdv2 = MarkdownRenderer.toMarkdownV2(text)
+        if let msgId = messageId {
+            if await editMessageMarkdown(token: token, chatId: chatId, messageId: msgId, text: mdv2) { return }
+            await editMessage(token: token, chatId: chatId, messageId: msgId, text: text)
+        } else {
+            if await sendMessageMarkdown(token: token, chatId: chatId, text: mdv2) { return }
+            await sendMessage(token: token, chatId: chatId, text: text)
+        }
+    }
+
+    private func editMessageMarkdown(token: String, chatId: Int64, messageId: Int, text: String) async -> Bool {
+        let truncated = String(text.prefix(4096))
+        let body: [String: Any] = [
+            "chat_id": chatId, "message_id": messageId, "text": truncated, "parse_mode": "MarkdownV2"
+        ]
         var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/editMessageText")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        return json["ok"] as? Bool == true
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let ok = json["ok"] as? Bool else { return false }
+        return ok
     }
 
-    // MARK: - Cost from in-memory session stats
+    private func sendMessageMarkdown(token: String, chatId: Int64, text: String) async -> Bool {
+        let truncated = String(text.prefix(4096))
+        let body: [String: Any] = ["chat_id": chatId, "text": truncated, "parse_mode": "MarkdownV2"]
+        var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/sendMessage")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let ok = json["ok"] as? Bool else { return false }
+        return ok
+    }
+
+    // MARK: - Cost
 
     private func sessionCostString() -> String {
         guard sessionInputTokens > 0 || sessionOutputTokens > 0 else {
