@@ -52,4 +52,32 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(store.links[0].url, "https://x.com")
         XCTAssertEqual(store.bolds[0], "important")
     }
+
+    // MARK: - Inline extraction
+
+    func testInlineImageExtracted() {
+        // Image becomes its alt text (escaped)
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("see ![my pic](https://x.com/a.png) here"),
+                       "see my pic here")
+    }
+
+    func testInlineCodeExtracted() {
+        // Backtick code: content only escapes ` and \
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("`hello`"), "`hello`")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("`a_b`"), "`a_b`")   // _ NOT escaped inside code
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("`a\\b`"), "`a\\\\b`")
+    }
+
+    func testInlineLinkExtracted() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("[click](https://x.com)"),
+                       "[click](https://x.com)")
+        // Link text gets plain-text escaping
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("[a.b](https://x.com)"),
+                       "[a\\.b](https://x.com)")
+    }
+
+    func testImageBeforeLink() {
+        // ![alt](url) must not be matched as a link [alt](url)
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("![pic](https://x.com)"), "pic")
+    }
 }

@@ -5,7 +5,43 @@ public enum MarkdownRenderer {
     // MARK: - Public API
 
     public static func toMarkdownV2(_ gfm: String) -> String {
-        return gfm  // placeholder — implemented in later tasks
+        processInline(gfm)
+    }
+
+    private static func processInline(_ text: String) -> String {
+        var store = PlaceholderStore()
+        var s = text
+        s = extractImages(s, store: &store)  // step 1
+        s = extractCode(s, store: &store)    // step 2
+        s = extractLinks(s, store: &store)   // step 3
+        // steps 4–7 (bold/italic/strike) added in Task 5
+        s = escapePlainTextPreservingPlaceholders(s)  // step 8
+        s = restorePlaceholders(s, store: store)      // step 9
+        return s
+    }
+
+    private static func escapePlainTextPreservingPlaceholders(_ text: String) -> String {
+        // Escape plain text while preserving TCPH_* placeholders
+        var result = ""
+        var i = text.startIndex
+        while i < text.endIndex {
+            // Check if we're at the start of a placeholder
+            if text[i...].hasPrefix("TCPH_") {
+                // Find the end of the placeholder (digits and underscore pattern)
+                var j = text.index(i, offsetBy: 5)  // Skip "TCPH_"
+                while j < text.endIndex && (text[j].isLetter || text[j].isNumber || text[j] == "_") {
+                    j = text.index(after: j)
+                }
+                result += String(text[i..<j])
+                i = j
+            } else {
+                let ch = text[i]
+                if plainTextSpecialChars.contains(ch) { result += "\\" }
+                result.append(ch)
+                i = text.index(after: i)
+            }
+        }
+        return result
     }
 
     // MARK: - Regex utility
@@ -75,6 +111,55 @@ public enum MarkdownRenderer {
     public static func testEscapePlainText(_ s: String) -> String { escapePlainText(s) }
     public static func testEscapeCodeContent(_ s: String) -> String { escapeCodeContent(s) }
     public static func testEscapeURL(_ s: String) -> String { escapeURL(s) }
+
+    // MARK: - Inline extraction helpers
+
+    private static func extractImages(_ s: String, store: inout PlaceholderStore) -> String {
+        // Must run before link extraction to prevent ![alt](url) matching as [alt](url)
+        regexReplace(#"!\[([^\]]*)\]\([^)]*\)"#, in: s) { groups in
+            store.storeImage(alt: groups[1])
+        }
+    }
+
+    private static func extractCode(_ s: String, store: inout PlaceholderStore) -> String {
+        regexReplace(#"`([^`]+)`"#, in: s) { groups in
+            store.storeCode(groups[1])
+        }
+    }
+
+    private static func extractLinks(_ s: String, store: inout PlaceholderStore) -> String {
+        regexReplace(#"\[([^\]]+)\]\(([^)]+)\)"#, in: s) { groups in
+            store.storeLink(text: groups[1], url: groups[2])
+        }
+    }
+
+    // MARK: - Placeholder restoration
+
+    private static func restorePlaceholders(_ s: String, store: PlaceholderStore) -> String {
+        var result = s
+
+        // Images: alt text escaped as plain text
+        for (i, alt) in store.images.enumerated() {
+            result = result.replacingOccurrences(of: "TCPH_IMG_\(i)", with: escapePlainText(alt))
+        }
+
+        // Code: wrap in backticks, escape only ` and \
+        for (i, code) in store.codes.enumerated() {
+            result = result.replacingOccurrences(of: "TCPH_CODE_\(i)",
+                                                 with: "`\(escapeCodeContent(code))`")
+        }
+
+        // Links: [escaped_text](escaped_url)
+        for (i, link) in store.links.enumerated() {
+            let text = escapePlainText(link.text)
+            let url  = escapeURL(link.url)
+            result = result.replacingOccurrences(of: "TCPH_LINK_\(i)",
+                                                 with: "[\(text)](\(url))")
+        }
+
+        // Bold-italic, bold, italic, strike — restored in Task 5
+        return result
+    }
 
     // MARK: - PlaceholderStore
 
