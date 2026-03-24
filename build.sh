@@ -10,7 +10,6 @@ cd "$PROJ_DIR"
 swift build -c release 2>&1
 
 BINARY=".build/arm64-apple-macosx/release/$APP_NAME"
-RESOURCES_BUNDLE=".build/arm64-apple-macosx/release/${APP_NAME}_${APP_NAME}.bundle"
 
 echo "▶ Creating .app bundle..."
 rm -rf "$APP_BUNDLE"
@@ -18,11 +17,6 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-
-# 复制 SPM 资源 bundle（如果存在）
-if [ -d "$RESOURCES_BUNDLE" ]; then
-    cp -R "$RESOURCES_BUNDLE" "$APP_BUNDLE/Contents/Resources/"
-fi
 
 cat > "$APP_BUNDLE/Contents/Info.plist" << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>

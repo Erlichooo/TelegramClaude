@@ -54,16 +54,23 @@ toggle MCP tools, switch language, or reset the session.
 ## How It Works
 
 ```
-Telegram → BotService (polling) → ClaudeGateway (persistent subprocess)
-                                        ↓
+Telegram ←──────────────────── BotService (long-polling + Telegram Bot API)
+                                        │
+                                 ClaudeGateway
+                                        │
                            claude --input-format stream-json
-                                        ↓
-                        mcp__plugin_telegram_telegram__reply
+                                --strict-mcp-config
 ```
 
-Each App launch starts one `claude` subprocess that stays alive across messages.
+Each app launch starts one `claude` subprocess that stays alive across messages.
+BotService polls Telegram directly, forwards messages to Claude via stdin, and
+sends Claude's responses back to Telegram rendered as MarkdownV2.
+
 Context lives in process memory, so Anthropic prompt cache hits on every message
 (after the first), cutting costs ~12× compared to spawning per message.
+
+`--strict-mcp-config` ensures the Claude subprocess never loads the Telegram MCP
+server — all Telegram API calls go through BotService only.
 
 ## Configuration
 

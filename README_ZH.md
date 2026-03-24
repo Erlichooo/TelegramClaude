@@ -52,15 +52,22 @@ macOS menu bar 应用，通过持久化会话将 Telegram 接入 Claude Code。
 ## 工作原理
 
 ```
-Telegram → BotService（轮询）→ ClaudeGateway（持久子进程）
-                                        ↓
-                           claude --input-format stream-json
-                                        ↓
-                        mcp__plugin_telegram_telegram__reply
+Telegram ←──────────────── BotService（长轮询 + Telegram Bot API）
+                                      │
+                               ClaudeGateway
+                                      │
+                          claude --input-format stream-json
+                               --strict-mcp-config
 ```
 
 每次 App 启动只启动一个 `claude` 子进程，跨消息保持活跃。
+BotService 直接轮询 Telegram，将消息通过 stdin 发给 Claude，
+并将 Claude 的文本输出以 MarkdownV2 格式发回 Telegram。
+
 上下文驻留进程内存，Anthropic prompt cache 在每条消息后持续命中。
+
+`--strict-mcp-config` 确保子进程不加载 Telegram MCP server，
+所有 Telegram API 调用都由 BotService 统一处理。
 
 ## 配置
 
