@@ -75,4 +75,38 @@ public enum MarkdownRenderer {
     public static func testEscapePlainText(_ s: String) -> String { escapePlainText(s) }
     public static func testEscapeCodeContent(_ s: String) -> String { escapeCodeContent(s) }
     public static func testEscapeURL(_ s: String) -> String { escapeURL(s) }
+
+    // MARK: - PlaceholderStore
+
+    struct PlaceholderStore {
+        private(set) var images: [String] = []
+        private(set) var codes: [String] = []
+        private(set) var links: [(text: String, url: String)] = []
+        private(set) var boldItalics: [String] = []
+        private(set) var bolds: [String] = []
+        private(set) var italics: [String] = []
+        private(set) var strikes: [String] = []
+
+        mutating func storeImage(alt: String) -> String {
+            images.append(alt); return "TCPH_IMG_\(images.count - 1)"
+        }
+        mutating func storeCode(_ c: String) -> String {
+            codes.append(c); return "TCPH_CODE_\(codes.count - 1)"
+        }
+        mutating func storeLink(text: String, url: String) -> String {
+            links.append((text, url)); return "TCPH_LINK_\(links.count - 1)"
+        }
+        mutating func storeBoldItalic(_ c: String) -> String {
+            boldItalics.append(c); return "TCPH_BI_\(boldItalics.count - 1)"
+        }
+        mutating func storeBold(_ c: String) -> String {
+            bolds.append(c); return "TCPH_B_\(bolds.count - 1)"
+        }
+        mutating func storeItalic(_ c: String) -> String {
+            italics.append(c); return "TCPH_I_\(italics.count - 1)"
+        }
+        mutating func storeStrike(_ c: String) -> String {
+            strikes.append(c); return "TCPH_S_\(strikes.count - 1)"
+        }
+    }
 }
