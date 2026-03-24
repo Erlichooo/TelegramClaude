@@ -152,14 +152,16 @@ actor ClaudeGateway {
         outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let str = String(data: handle.availableData, encoding: .utf8) ?? ""
             guard !str.isEmpty else { return }
-            Task { await self?.appendOutput(str) }
+            let s = self
+            Task { await s?.appendOutput(str) }
         }
 
         proc.terminationHandler = { [weak self, weak outPipe] _ in
             outPipe?.fileHandleForReading.readabilityHandler = nil
             let remaining = outPipe?.fileHandleForReading.readDataToEndOfFile() ?? Data()
             let str = String(data: remaining, encoding: .utf8) ?? ""
-            Task { await self?.handleTermination(remaining: str) }
+            let s = self
+            Task { await s?.handleTermination(remaining: str) }
         }
 
         do {
