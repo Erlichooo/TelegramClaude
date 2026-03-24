@@ -85,6 +85,8 @@ public enum MarkdownRenderer {
     private static func processInline(_ text: String) -> String {
         var store = PlaceholderStore()
         var s = text
+        // Strip HTML tags before any other processing
+        s = regexReplace(#"</?[a-zA-Z][^>]*>"#, in: s) { _ in "" }
         s = extractImages(s, store: &store)  // step 1
         s = extractCode(s, store: &store)    // step 2
         s = extractLinks(s, store: &store)       // step 3

@@ -177,4 +177,39 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2("***"), "")
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2("___"), "")
     }
+
+    // MARK: - Edge cases
+
+    func testEmptyString() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(""), "")
+    }
+
+    func testPlainTextSpecialChars() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("1+1=2"), "1\\+1\\=2")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("price: 5.00"), "price: 5\\.00")
+    }
+
+    func testMixedBlockAndInline() {
+        let input = "# Title\n\n**bold** and `code`\n\n- item one\n- item two"
+        let expected = "*Title*\n\n*bold* and `code`\n\n• item one\n• item two"
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
+    }
+
+    func testCodeFenceWithInlineMarkdown() {
+        let input = "```\n**not bold**\n_not italic_\n```"
+        let expected = "```\n**not bold**\n_not italic_\n```"
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
+    }
+
+    func testMultilineTable() {
+        let input = "| Col A | Col B |\n|---|---|\n| val1 | val2 |"
+        let result = MarkdownRenderer.toMarkdownV2(input)
+        XCTAssertFalse(result.contains("|"))
+        XCTAssertTrue(result.contains("Col A"))
+        XCTAssertTrue(result.contains("val1"))
+    }
+
+    func testHTMLTagsStripped() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("see <b>this</b>"), "see this")
+    }
 }
