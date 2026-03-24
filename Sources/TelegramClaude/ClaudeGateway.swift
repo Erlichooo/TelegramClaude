@@ -98,9 +98,33 @@ actor ClaudeGateway {
             stdinHandle?.write(writeData)
         }
 
-        // 等待 result 事件
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingContinuation = continuation
+        // 等待 result 事件（最多 5 分钟，超时则杀掉子进程）
+        let timeoutTask = Task { [weak self] in
+            try await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
+            await self?.forceKillProcess()
+        }
+        do {
+            let result = try await withCheckedThrowingContinuation { continuation in
+                pendingContinuation = continuation
+            }
+            timeoutTask.cancel()
+            return result
+        } catch {
+            timeoutTask.cancel()
+            throw error
+        }
+    }
+
+    func forceKillProcess() {
+        process?.terminate()
+        process = nil
+        stdinHandle = nil
+        stdoutPipe = nil
+        if let cont = pendingContinuation {
+            pendingContinuation = nil
+            pendingOnStatus = nil
+            pendingOnChunk = nil
+            cont.resume(throwing: GatewayError.processCrashed)
         }
     }
 
@@ -131,9 +155,12 @@ actor ClaudeGateway {
             "--output-format", "stream-json",
             "--input-format", "stream-json",
             "--verbose",
-            "--allowedTools",
-            McpPluginConfig.enabledWildcards().joined(separator: ",")
+            "--strict-mcp-config",
         ]
+        // Build MCP config from user-selected servers only (excludes Telegram plugin entirely)
+        if let mcpJson = McpPluginConfig.buildMcpConfigJSON() {
+            args += ["--mcp-config", mcpJson]
+        }
         if let sid = currentSessionId {
             args += ["--resume", sid]
         }

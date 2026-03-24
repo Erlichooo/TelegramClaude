@@ -230,4 +230,50 @@ final class MarkdownRendererTests: XCTestCase {
     func testCheckboxDoesNotAffectRegularList() {
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2("- item"), "• item")
     }
+
+    func testPrintFullDocument() {
+        let input = """
+        # 开发者工具箱
+
+        ## 常用命令
+
+        **Git 操作** | *版本控制必备*
+
+        - `git clone <url>` — 克隆仓库
+        - `git commit -m "msg"` — 提交代码
+        - `git push origin main` — 推送到主分支
+
+        ---
+
+        ## 环境配置
+
+        1. 安装 Node.js
+        2. 初始化项目
+
+        ---
+
+        ```python
+        def fibonacci(n):
+            if n <= 1:
+                return n
+            return fibonacci(n-1) + fibonacci(n-2)
+        ```
+
+        | 语言 | 速度 |
+        |------|------|
+        | Rust | ⚡ 极快 |
+
+        - [x] 写单元测试
+        - [ ] 部署到生产环境
+
+        > 任何足够复杂的代码，都无法与 Bug 区分
+
+        ~~jQuery 是最佳框架~~ 时代变了
+        """
+        let output = MarkdownRenderer.toMarkdownV2(input)
+        print("\n=== MarkdownV2 OUTPUT ===")
+        print(output)
+        print("=== END ===\n")
+        XCTAssertFalse(output.isEmpty)
+    }
 }

@@ -78,18 +78,42 @@ enum McpPluginConfig {
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let list = json["enabledMcpServers"] as? [String] else {
-            return [telegramRequiredServer().toolsWildcard]
+            return []
         }
         return list
     }
 
+    /// 构建只包含用户启用服务器（不含 Telegram）的 MCP config JSON 字符串
+    /// 用于 --strict-mcp-config --mcp-config，让子进程完全不加载 Telegram MCP server
+    static func buildMcpConfigJSON() -> String? {
+        let enabled = enabledWildcards()
+        guard !enabled.isEmpty else { return nil }
+
+        // 从 ~/.mcp.json 读取全局服务器配置
+        let globalMcpPath = NSHomeDirectory() + "/.mcp.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: globalMcpPath)),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let allServers = json["mcpServers"] as? [String: Any] else { return nil }
+
+        // 只保留用户启用的服务器（wildcard 格式 mcp__serverName__*）
+        var selectedServers: [String: Any] = [:]
+        for (serverName, serverConfig) in allServers {
+            let wildcard = "mcp__\(serverName)__*"
+            if enabled.contains(wildcard) {
+                selectedServers[serverName] = serverConfig
+            }
+        }
+
+        guard !selectedServers.isEmpty else { return nil }
+        let config: [String: Any] = ["mcpServers": selectedServers]
+        guard let configData = try? JSONSerialization.data(withJSONObject: config),
+              let configStr = String(data: configData, encoding: .utf8) else { return nil }
+        return configStr
+    }
+
     /// 保存用户勾选结果到 config.json
     static func save(enabled: [McpServer]) {
-        // telegram 必须项始终包含
-        var wildcards = [telegramRequiredServer().toolsWildcard]
-        for s in enabled where !s.isRequired {
-            wildcards.append(s.toolsWildcard)
-        }
+        let wildcards = enabled.map { $0.toolsWildcard }
         let json: [String: Any] = ["enabledMcpServers": wildcards]
         guard let data = try? JSONSerialization.data(withJSONObject: json, options: .prettyPrinted) else { return }
         try? data.write(to: URL(fileURLWithPath: configPath))
@@ -103,7 +127,7 @@ enum McpPluginConfig {
             pluginName: "telegram",
             serverName: "telegram",
             toolsWildcard: "mcp__plugin_telegram_telegram__reply",
-            isRequired: true
+            isRequired: false
         )
     }
 }

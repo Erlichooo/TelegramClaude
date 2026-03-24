@@ -28,6 +28,7 @@ class BotService: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var offset: Int64 = 0
     private var isProcessing = false
+    private var isSendingFinal = false
 
     // MARK: - Session
 
@@ -125,6 +126,7 @@ class BotService: ObservableObject {
         guard let updateId = update["update_id"] as? Int64 else { return }
         offset = updateId + 1
 
+
         guard let message = update["message"] as? [String: Any],
               let chat = message["chat"] as? [String: Any],
               let chatId = chat["id"] as? Int64,
@@ -217,7 +219,10 @@ class BotService: ObservableObject {
                     lastEditedText = accumulated
                     lastEditTime = now
                     if let msgId = placeholderMsgId {
-                        Task { await self.editMessage(token: token, chatId: chatId, messageId: msgId, text: accumulated) }
+                        Task {
+                            guard !self.isSendingFinal else { return }
+                            await self.editMessage(token: token, chatId: chatId, messageId: msgId, text: accumulated)
+                        }
                     }
                 }
             )
@@ -253,6 +258,8 @@ class BotService: ObservableObject {
 
         let isSlashCommand = claudeInput.hasPrefix("/")
         let displayText = finalText.isEmpty ? (isSlashCommand ? L("✅ Done", "✅ 执行完成") : L("(no response)", "（无回复）")) : finalText
+        isSendingFinal = true
+        defer { isSendingFinal = false }
         await sendOrEditFinal(token: token, chatId: chatId, messageId: placeholderMsgId, text: displayText)
 
         messages.append(ChatMessage(role: .assistant, text: displayText, time: Date()))
@@ -356,3 +363,4 @@ class BotService: ObservableObject {
             """
     }
 }
+
