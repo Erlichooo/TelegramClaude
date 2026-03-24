@@ -21,26 +21,24 @@ public enum MarkdownRenderer {
     }
 
     private static func escapePlainTextPreservingPlaceholders(_ text: String) -> String {
-        // Escape plain text while preserving TCPH_* placeholders
-        var result = ""
-        var i = text.startIndex
-        while i < text.endIndex {
-            // Check if we're at the start of a placeholder
-            if text[i...].hasPrefix("TCPH_") {
-                // Find the end of the placeholder (digits and underscore pattern)
-                var j = text.index(i, offsetBy: 5)  // Skip "TCPH_"
-                while j < text.endIndex && (text[j].isLetter || text[j].isNumber || text[j] == "_") {
-                    j = text.index(after: j)
-                }
-                result += String(text[i..<j])
-                i = j
-            } else {
-                let ch = text[i]
-                if plainTextSpecialChars.contains(ch) { result += "\\" }
-                result.append(ch)
-                i = text.index(after: i)
-            }
+        // Split on placeholder tokens, escape only the non-placeholder segments
+        let pattern = #"TCPH_(?:IMG|CODE|LINK|BI|B|I|S)_\d+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            assertionFailure("Invalid placeholder regex")
+            return escapePlainText(text)
         }
+        var result = ""
+        var lastEnd = text.startIndex
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let matchRange = Range(match.range, in: text) else { continue }
+            // Escape the segment before this placeholder
+            result += escapePlainText(String(text[lastEnd..<matchRange.lowerBound]))
+            // Pass the placeholder through unmodified
+            result += String(text[matchRange])
+            lastEnd = matchRange.upperBound
+        }
+        // Escape the remaining segment after the last placeholder
+        result += escapePlainText(String(text[lastEnd...]))
         return result
     }
 
