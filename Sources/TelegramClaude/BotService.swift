@@ -250,13 +250,13 @@ class BotService: ObservableObject {
         let dAPI = result?.durationAPIms ?? 0
         let dWall = result?.durationWallms ?? 0
 
-        sessionCostUSD += cost
+        sessionCostUSD = cost          // total_cost_usd 是全局累计值，直接取最新
         sessionInputTokens += inTokens
         sessionOutputTokens += outTokens
         sessionCacheReadTokens += cacheRead
         sessionCacheWriteTokens += cacheWrite
-        sessionDurationAPIms += dAPI
-        sessionDurationWallms += dWall
+        sessionDurationAPIms = dAPI    // duration_api_ms 是全局累计值，直接取最新
+        sessionDurationWallms = dWall  // duration_ms 是全局累计值，直接取最新
 
         // 最终编辑为完整回复
         let isSlashCommand = claudeInput.hasPrefix("/")
