@@ -20,6 +20,7 @@ public enum MarkdownRenderer {
         using transform: ([String]) -> String
     ) -> String {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else {
+            assertionFailure("Invalid regex pattern: \(pattern)")
             return string
         }
         var result = ""
