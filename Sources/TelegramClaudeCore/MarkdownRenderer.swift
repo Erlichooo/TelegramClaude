@@ -5,7 +5,24 @@ public enum MarkdownRenderer {
     // MARK: - Public API
 
     public static func toMarkdownV2(_ gfm: String) -> String {
-        processInline(gfm)
+        let lines = gfm.components(separatedBy: "\n")
+        var output: [String] = []
+        var inPre = false
+
+        for line in lines {
+            if line.hasPrefix("```") {
+                inPre.toggle()
+                output.append(line)
+                continue
+            }
+            if inPre {
+                output.append(escapeCodeContent(line))
+                continue
+            }
+            output.append(processInline(line))
+        }
+
+        return output.joined(separator: "\n")
     }
 
     private static func processInline(_ text: String) -> String {
