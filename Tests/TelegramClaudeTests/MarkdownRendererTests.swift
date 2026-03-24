@@ -32,4 +32,24 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(MarkdownRenderer.testEscapeURL("url)end"), "url\\)end")
         XCTAssertEqual(MarkdownRenderer.testEscapeURL("url\\end"), "url\\\\end")
     }
+
+    // MARK: - PlaceholderStore
+
+    func testPlaceholderStoreRoundtrip() {
+        var store = MarkdownRenderer.PlaceholderStore()
+        let imgPH = store.storeImage(alt: "my alt")
+        let codePH = store.storeCode("fmt(x)")
+        let linkPH = store.storeLink(text: "click", url: "https://x.com")
+        let boldPH = store.storeBold("important")
+
+        XCTAssertEqual(imgPH,  "TCPH_IMG_0")
+        XCTAssertEqual(codePH, "TCPH_CODE_0")
+        XCTAssertEqual(linkPH, "TCPH_LINK_0")
+        XCTAssertEqual(boldPH, "TCPH_B_0")
+        XCTAssertEqual(store.images[0], "my alt")
+        XCTAssertEqual(store.codes[0], "fmt(x)")
+        XCTAssertEqual(store.links[0].text, "click")
+        XCTAssertEqual(store.links[0].url, "https://x.com")
+        XCTAssertEqual(store.bolds[0], "important")
+    }
 }
