@@ -19,10 +19,67 @@ public enum MarkdownRenderer {
                 output.append(escapeCodeContent(line))
                 continue
             }
-            output.append(processInline(line))
+            output.append(processBlockLine(line))
         }
 
         return output.joined(separator: "\n")
+    }
+
+    // MARK: - Block line processing
+
+    private static func processBlockLine(_ line: String) -> String {
+        // Horizontal rule: ---  ***  ___  (3 or more, whole line)
+        if let _ = try? NSRegularExpression(pattern: #"^[-*_]{3,}$"#)
+                       .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) {
+            return ""
+        }
+
+        // Heading: # … ######
+        if let m = try? NSRegularExpression(pattern: #"^#{1,6} (.*)"#)
+                        .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+           let r = Range(m.range(at: 1), in: line) {
+            return "*\(processInline(String(line[r])))*"
+        }
+
+        // Blockquote: one or more leading >
+        if let m = try? NSRegularExpression(pattern: #"^>+\s?(.*)"#)
+                        .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+           let r = Range(m.range(at: 1), in: line) {
+            return ">\(processInline(String(line[r])))"
+        }
+
+        // Unordered list: - * +
+        if let m = try? NSRegularExpression(pattern: #"^[-*+] (.*)"#)
+                        .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+           let r = Range(m.range(at: 1), in: line) {
+            return "• \(processInline(String(line[r])))"
+        }
+
+        // Ordered list: 1. 2. etc.
+        if let m = try? NSRegularExpression(pattern: #"^(\d+)\. (.*)"#)
+                        .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+           let numR = Range(m.range(at: 1), in: line),
+           let textR = Range(m.range(at: 2), in: line) {
+            return "\(String(line[numR]))\\. \(processInline(String(line[textR])))"
+        }
+
+        // Table separator row: |---| or |:---:|
+        if let _ = try? NSRegularExpression(pattern: #"^\|[-: |]+\|$"#)
+                        .firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) {
+            return ""
+        }
+
+        // Table content row: |col|col|
+        if line.hasPrefix("|") && line.hasSuffix("|") {
+            let cols = line
+                .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                .components(separatedBy: "|")
+                .map { processInline($0.trimmingCharacters(in: .whitespaces)) }
+            return cols.joined(separator: "   ")
+        }
+
+        // Plain paragraph
+        return processInline(line)
     }
 
     private static func processInline(_ text: String) -> String {

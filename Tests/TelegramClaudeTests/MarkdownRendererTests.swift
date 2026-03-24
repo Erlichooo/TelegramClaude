@@ -137,4 +137,44 @@ final class MarkdownRendererTests: XCTestCase {
         let expected = "*bold*\n```\ncode\n```\n*after*"
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
     }
+
+    // MARK: - Block: headings / quotes / lists / tables / HR
+
+    func testHeadingToBold() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("# Hello"), "*Hello*")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("## Hello World"), "*Hello World*")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("### a.b"), "*a\\.b*")
+    }
+
+    func testBlockquote() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("> hello"), ">hello")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(">> nested"), ">nested")
+    }
+
+    func testUnorderedList() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("- item"), "• item")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("* item"), "• item")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("+ item"), "• item")
+    }
+
+    func testOrderedList() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("1. item"), "1\\. item")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("10. item"), "10\\. item")
+    }
+
+    func testTableSeparatorDiscarded() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("|---|---|"), "")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("| :--- | ---: |"), "")
+    }
+
+    func testTableRowFlattened() {
+        let result = MarkdownRenderer.toMarkdownV2("| a.b | c |")
+        XCTAssertEqual(result, "a\\.b   c")
+    }
+
+    func testHorizontalRule() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("---"), "")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("***"), "")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("___"), "")
+    }
 }
