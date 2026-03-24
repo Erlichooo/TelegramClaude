@@ -111,4 +111,30 @@ final class MarkdownRendererTests: XCTestCase {
     func testBoldDoesNotMatchSingleUnderscore() {
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2("a_b_c"), "a\\_b\\_c")
     }
+
+    // MARK: - Block: code fences
+
+    func testCodeFencePassthrough() {
+        let input = "```swift\nlet x = 1\n```"
+        let expected = "```swift\nlet x = 1\n```"
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
+    }
+
+    func testCodeFenceEscapesBacktickAndBackslash() {
+        let input = "```\na`b\nc\\d\n```"
+        let expected = "```\na\\`b\nc\\\\d\n```"
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
+    }
+
+    func testCodeFenceDoesNotEscapeOtherChars() {
+        let input = "```\na_b *c*\n```"
+        let expected = "```\na_b *c*\n```"
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
+    }
+
+    func testNonFenceLinesStillProcessed() {
+        let input = "**bold**\n```\ncode\n```\n**after**"
+        let expected = "*bold*\n```\ncode\n```\n*after*"
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2(input), expected)
+    }
 }
