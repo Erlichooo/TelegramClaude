@@ -7,7 +7,9 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "TelegramClaude",
-            path: "Sources/TelegramClaude"
+            path: "Sources/TelegramClaude",
+            exclude: ["Info.plist"],
+            resources: [.process("converter.js")]
         )
     ]
 )

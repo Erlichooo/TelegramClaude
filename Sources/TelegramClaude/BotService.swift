@@ -278,13 +278,22 @@ class BotService: ObservableObject {
     }
 
     private func sendMessageGetId(token: String, chatId: Int64, text: String) async -> Int? {
+        let truncated = String(text.prefix(4096))
+        // 先尝试 MarkdownV2，失败 fallback 纯文本
+        if let mdv2 = MarkdownConverter.shared.convert(truncated),
+           let msgId = await _sendRaw(token: token, chatId: chatId, text: mdv2, parseMode: "MarkdownV2") {
+            return msgId
+        }
+        return await _sendRaw(token: token, chatId: chatId, text: truncated, parseMode: nil)
+    }
+
+    private func _sendRaw(token: String, chatId: Int64, text: String, parseMode: String?) async -> Int? {
+        var body: [String: Any] = ["chat_id": chatId, "text": text]
+        if let mode = parseMode { body["parse_mode"] = mode }
         var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/sendMessage")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "chat_id": chatId,
-            "text": text.prefix(4096)
-        ])
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let (data, _) = try? await URLSession.shared.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let result = json["result"] as? [String: Any],
@@ -293,15 +302,25 @@ class BotService: ObservableObject {
     }
 
     private func editMessage(token: String, chatId: Int64, messageId: Int, text: String) async {
+        let truncated = String(text.prefix(4096))
+        // 先尝试 MarkdownV2，失败 fallback 纯文本
+        if let mdv2 = MarkdownConverter.shared.convert(truncated) {
+            if await _editRaw(token: token, chatId: chatId, messageId: messageId, text: mdv2, parseMode: "MarkdownV2") { return }
+        }
+        _ = await _editRaw(token: token, chatId: chatId, messageId: messageId, text: truncated, parseMode: nil)
+    }
+
+    @discardableResult
+    private func _editRaw(token: String, chatId: Int64, messageId: Int, text: String, parseMode: String?) async -> Bool {
+        var body: [String: Any] = ["chat_id": chatId, "message_id": messageId, "text": text]
+        if let mode = parseMode { body["parse_mode"] = mode }
         var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/editMessageText")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "chat_id": chatId,
-            "message_id": messageId,
-            "text": String(text.prefix(4096))
-        ])
-        _ = try? await URLSession.shared.data(for: request)
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return json["ok"] as? Bool == true
     }
 
     // MARK: - Cost from in-memory session stats
