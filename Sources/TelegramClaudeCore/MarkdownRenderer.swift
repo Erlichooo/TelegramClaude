@@ -13,8 +13,11 @@ public enum MarkdownRenderer {
         var s = text
         s = extractImages(s, store: &store)  // step 1
         s = extractCode(s, store: &store)    // step 2
-        s = extractLinks(s, store: &store)   // step 3
-        // steps 4–7 (bold/italic/strike) added in Task 5
+        s = extractLinks(s, store: &store)       // step 3
+        s = extractBoldItalic(s, store: &store)  // step 4
+        s = extractBold(s, store: &store)        // step 5
+        s = extractItalic(s, store: &store)      // step 6
+        s = extractStrike(s, store: &store)      // step 7
         s = escapePlainTextPreservingPlaceholders(s)  // step 8
         s = restorePlaceholders(s, store: store)      // step 9
         return s
@@ -22,7 +25,7 @@ public enum MarkdownRenderer {
 
     private static func escapePlainTextPreservingPlaceholders(_ text: String) -> String {
         // Split on placeholder tokens, escape only the non-placeholder segments
-        let pattern = #"TCPH_(?:IMG|CODE|LINK|BI|B|I|S)_\d+"#
+        let pattern = #"TCPH(?:IMG|COD|LNK|BI|B|I|S)\d+Z"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             assertionFailure("Invalid placeholder regex")
             return escapePlainText(text)
@@ -131,6 +134,44 @@ public enum MarkdownRenderer {
         }
     }
 
+    private static func extractBoldItalic(_ s: String, store: inout PlaceholderStore) -> String {
+        var result = regexReplace(#"\*{3}(.+?)\*{3}"#, in: s) { groups in
+            store.storeBoldItalic(groups[1])
+        }
+        result = regexReplace(#"_{3}(.+?)_{3}"#, in: result) { groups in
+            store.storeBoldItalic(groups[1])
+        }
+        return result
+    }
+
+    private static func extractBold(_ s: String, store: inout PlaceholderStore) -> String {
+        var result = regexReplace(#"\*{2}(.+?)\*{2}"#, in: s) { groups in
+            store.storeBold(groups[1])
+        }
+        result = regexReplace(#"(?<![_])_{2}(?![_])(.+?)(?<![_])_{2}(?![_])"#, in: result) { groups in
+            store.storeBold(groups[1])
+        }
+        return result
+    }
+
+    private static func extractItalic(_ s: String, store: inout PlaceholderStore) -> String {
+        var result = regexReplace(#"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"#, in: s) { groups in
+            store.storeItalic(groups[1])
+        }
+        // GFM rule: _ opener must NOT be preceded by alphanumeric (handles snake_case).
+        // _ closer must NOT be followed by alphanumeric.
+        result = regexReplace(#"(?<![a-zA-Z0-9])_(?![_\s])(.+?)(?<![_\s])_(?![a-zA-Z0-9_])"#, in: result) { groups in
+            store.storeItalic(groups[1])
+        }
+        return result
+    }
+
+    private static func extractStrike(_ s: String, store: inout PlaceholderStore) -> String {
+        regexReplace(#"~~(.+?)~~"#, in: s) { groups in
+            store.storeStrike(groups[1])
+        }
+    }
+
     // MARK: - Placeholder restoration
 
     private static func restorePlaceholders(_ s: String, store: PlaceholderStore) -> String {
@@ -138,12 +179,12 @@ public enum MarkdownRenderer {
 
         // Images: alt text escaped as plain text
         for (i, alt) in store.images.enumerated() {
-            result = result.replacingOccurrences(of: "TCPH_IMG_\(i)", with: escapePlainText(alt))
+            result = result.replacingOccurrences(of: "TCPHIMG\(i)Z", with: escapePlainText(alt))
         }
 
         // Code: wrap in backticks, escape only ` and \
         for (i, code) in store.codes.enumerated() {
-            result = result.replacingOccurrences(of: "TCPH_CODE_\(i)",
+            result = result.replacingOccurrences(of: "TCPHCOD\(i)Z",
                                                  with: "`\(escapeCodeContent(code))`")
         }
 
@@ -151,11 +192,34 @@ public enum MarkdownRenderer {
         for (i, link) in store.links.enumerated() {
             let text = escapePlainText(link.text)
             let url  = escapeURL(link.url)
-            result = result.replacingOccurrences(of: "TCPH_LINK_\(i)",
+            result = result.replacingOccurrences(of: "TCPHLNK\(i)Z",
                                                  with: "[\(text)](\(url))")
         }
 
-        // Bold-italic, bold, italic, strike — restored in Task 5
+        // Bold-italic: *_content_*
+        for (i, c) in store.boldItalics.enumerated() {
+            result = result.replacingOccurrences(of: "TCPHBI\(i)Z",
+                                                 with: "*_\(escapePlainText(c))_*")
+        }
+
+        // Bold: *content*
+        for (i, c) in store.bolds.enumerated() {
+            result = result.replacingOccurrences(of: "TCPHB\(i)Z",
+                                                 with: "*\(escapePlainText(c))*")
+        }
+
+        // Italic: _content_
+        for (i, c) in store.italics.enumerated() {
+            result = result.replacingOccurrences(of: "TCPHI\(i)Z",
+                                                 with: "_\(escapePlainText(c))_")
+        }
+
+        // Strike: ~content~
+        for (i, c) in store.strikes.enumerated() {
+            result = result.replacingOccurrences(of: "TCPHS\(i)Z",
+                                                 with: "~\(escapePlainText(c))~")
+        }
+
         return result
     }
 
@@ -170,26 +234,27 @@ public enum MarkdownRenderer {
         private(set) var italics: [String] = []
         private(set) var strikes: [String] = []
 
+        // Token format: TCPH{TYPE}{index}Z  — no underscores, Z-suffix prevents index prefix collisions
         mutating func storeImage(alt: String) -> String {
-            images.append(alt); return "TCPH_IMG_\(images.count - 1)"
+            images.append(alt); return "TCPHIMG\(images.count - 1)Z"
         }
         mutating func storeCode(_ c: String) -> String {
-            codes.append(c); return "TCPH_CODE_\(codes.count - 1)"
+            codes.append(c); return "TCPHCOD\(codes.count - 1)Z"
         }
         mutating func storeLink(text: String, url: String) -> String {
-            links.append((text, url)); return "TCPH_LINK_\(links.count - 1)"
+            links.append((text, url)); return "TCPHLNK\(links.count - 1)Z"
         }
         mutating func storeBoldItalic(_ c: String) -> String {
-            boldItalics.append(c); return "TCPH_BI_\(boldItalics.count - 1)"
+            boldItalics.append(c); return "TCPHBI\(boldItalics.count - 1)Z"
         }
         mutating func storeBold(_ c: String) -> String {
-            bolds.append(c); return "TCPH_B_\(bolds.count - 1)"
+            bolds.append(c); return "TCPHB\(bolds.count - 1)Z"
         }
         mutating func storeItalic(_ c: String) -> String {
-            italics.append(c); return "TCPH_I_\(italics.count - 1)"
+            italics.append(c); return "TCPHI\(italics.count - 1)Z"
         }
         mutating func storeStrike(_ c: String) -> String {
-            strikes.append(c); return "TCPH_S_\(strikes.count - 1)"
+            strikes.append(c); return "TCPHS\(strikes.count - 1)Z"
         }
     }
 }

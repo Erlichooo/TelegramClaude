@@ -42,10 +42,10 @@ final class MarkdownRendererTests: XCTestCase {
         let linkPH = store.storeLink(text: "click", url: "https://x.com")
         let boldPH = store.storeBold("important")
 
-        XCTAssertEqual(imgPH,  "TCPH_IMG_0")
-        XCTAssertEqual(codePH, "TCPH_CODE_0")
-        XCTAssertEqual(linkPH, "TCPH_LINK_0")
-        XCTAssertEqual(boldPH, "TCPH_B_0")
+        XCTAssertEqual(imgPH,  "TCPHIMG0Z")
+        XCTAssertEqual(codePH, "TCPHCOD0Z")
+        XCTAssertEqual(linkPH, "TCPHLNK0Z")
+        XCTAssertEqual(boldPH, "TCPHB0Z")
         XCTAssertEqual(store.images[0], "my alt")
         XCTAssertEqual(store.codes[0], "fmt(x)")
         XCTAssertEqual(store.links[0].text, "click")
@@ -79,5 +79,36 @@ final class MarkdownRendererTests: XCTestCase {
     func testImageBeforeLink() {
         // ![alt](url) must not be matched as a link [alt](url)
         XCTAssertEqual(MarkdownRenderer.toMarkdownV2("![pic](https://x.com)"), "pic")
+    }
+
+    // MARK: - Formatting markers
+
+    func testBold() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("**hello**"), "*hello*")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("**a.b**"), "*a\\.b*")
+    }
+
+    func testBoldUnderscore() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("__hello__"), "*hello*")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("snake_case"), "snake\\_case")
+    }
+
+    func testItalic() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("*hello*"), "_hello_")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("_hello_"), "_hello_")
+    }
+
+    func testBoldItalic() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("***hello***"), "*_hello_*")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("___hello___"), "*_hello_*")
+    }
+
+    func testStrikethrough() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("~~hello~~"), "~hello~")
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("~~a.b~~"), "~a\\.b~")
+    }
+
+    func testBoldDoesNotMatchSingleUnderscore() {
+        XCTAssertEqual(MarkdownRenderer.toMarkdownV2("a_b_c"), "a\\_b\\_c")
     }
 }
