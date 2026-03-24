@@ -5,11 +5,19 @@ let package = Package(
     name: "TelegramClaude",
     platforms: [.macOS(.v13)],
     targets: [
+        .target(
+            name: "TelegramClaudeCore",
+            path: "Sources/TelegramClaudeCore"
+        ),
         .executableTarget(
             name: "TelegramClaude",
-            path: "Sources/TelegramClaude",
-            exclude: ["Info.plist"],
-            resources: [.process("converter.js")]
+            dependencies: ["TelegramClaudeCore"],
+            path: "Sources/TelegramClaude"
+        ),
+        .testTarget(
+            name: "TelegramClaudeTests",
+            dependencies: ["TelegramClaudeCore"],
+            path: "Tests/TelegramClaudeTests"
         )
     ]
 )
