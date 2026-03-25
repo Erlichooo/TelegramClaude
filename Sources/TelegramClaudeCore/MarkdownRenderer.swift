@@ -9,8 +9,36 @@ public enum MarkdownRenderer {
         var output: [String] = []
         var inPre = false
 
+        // Table accumulation state
+        var tableOrigLines: [String] = []
+        var tableRows: [[String]] = []
+        var tableHeaderCount = 0
+        var tableHasSeparator = false
+
+        func parseTableRow(_ line: String) -> [String] {
+            line.trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                .components(separatedBy: "|")
+                .map { stripInlineMarkdown($0.trimmingCharacters(in: .whitespaces)) }
+        }
+
+        func flushTable() {
+            guard !tableOrigLines.isEmpty else { return }
+            if tableHasSeparator {
+                output.append(renderRoundedGrid(rows: tableRows, headerRows: tableHeaderCount))
+            } else {
+                for origLine in tableOrigLines {
+                    output.append(processBlockLine(origLine))
+                }
+            }
+            tableOrigLines = []
+            tableRows = []
+            tableHeaderCount = 0
+            tableHasSeparator = false
+        }
+
         for line in lines {
             if line.hasPrefix("```") {
+                flushTable()
                 inPre.toggle()
                 output.append(line)
                 continue
@@ -19,8 +47,21 @@ public enum MarkdownRenderer {
                 output.append(escapeCodeContent(line))
                 continue
             }
-            output.append(processBlockLine(line))
+            if isSeparatorRow(line) {
+                if !tableOrigLines.isEmpty {
+                    tableHeaderCount = tableRows.count
+                    tableHasSeparator = true
+                }
+                // standalone separator with no preceding table rows: skip
+            } else if isTableRow(line) {
+                tableOrigLines.append(line)
+                tableRows.append(parseTableRow(line))
+            } else {
+                flushTable()
+                output.append(processBlockLine(line))
+            }
         }
+        flushTable()
 
         return output.joined(separator: "\n")
     }
@@ -306,6 +347,67 @@ public enum MarkdownRenderer {
         }
 
         return result
+    }
+
+    // MARK: - Table rendering
+
+    private static func isTableRow(_ line: String) -> Bool {
+        line.hasPrefix("|") && line.hasSuffix("|")
+            && !line.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private static func isSeparatorRow(_ line: String) -> Bool {
+        (try? NSRegularExpression(pattern: #"^\|[-: |]+\|$"#)
+            .firstMatch(in: line, range: NSRange(line.startIndex..., in: line))) != nil
+    }
+
+    private static func stripInlineMarkdown(_ text: String) -> String {
+        var s = text
+        s = regexReplace(#"!\[([^\]]*)\]\([^)]*\)"#, in: s) { $0[1] }  // image → alt
+        s = regexReplace(#"\[([^\]]+)\]\([^)]+\)"#, in: s) { $0[1] }   // link → text
+        s = regexReplace(#"`([^`]+)`"#, in: s) { $0[1] }                // `code` → content
+        s = regexReplace(#"\*{3}(.+?)\*{3}"#, in: s) { $0[1] }         // ***bi***
+        s = regexReplace(#"_{3}(.+?)_{3}"#, in: s) { $0[1] }           // ___bi___
+        s = regexReplace(#"\*{2}(.+?)\*{2}"#, in: s) { $0[1] }         // **bold**
+        s = regexReplace(#"_{2}(.+?)_{2}"#, in: s) { $0[1] }           // __bold__
+        s = regexReplace(#"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"#, in: s) { $0[1] }  // *italic*
+        s = regexReplace(#"~~(.+?)~~"#, in: s) { $0[1] }               // ~~strike~~
+        return s
+    }
+
+    private static func renderRoundedGrid(rows: [[String]], headerRows: Int) -> String {
+        let colCount = rows.map { $0.count }.max() ?? 0
+        guard colCount > 0 else { return "" }
+
+        var widths = Array(repeating: 3, count: colCount)
+        for row in rows {
+            for (j, cell) in row.enumerated() where j < colCount {
+                widths[j] = max(widths[j], cell.count)
+            }
+        }
+
+        func seg(_ w: Int) -> String { String(repeating: "─", count: w + 2) }
+        func topLine() -> String { "╭" + widths.map(seg).joined(separator: "┬") + "╮" }
+        func midLine() -> String { "├" + widths.map(seg).joined(separator: "┼") + "┤" }
+        func botLine() -> String { "╰" + widths.map(seg).joined(separator: "┴") + "╯" }
+
+        func formatRow(_ row: [String]) -> String {
+            let cells = (0..<colCount).map { j -> String in
+                let cell = j < row.count ? row[j] : ""
+                return " " + cell.padding(toLength: widths[j], withPad: " ", startingAt: 0) + " "
+            }
+            return "│" + cells.joined(separator: "│") + "│"
+        }
+
+        var tableLines: [String] = [topLine()]
+        for (i, row) in rows.enumerated() {
+            tableLines.append(formatRow(row))
+            if i < rows.count - 1 {
+                tableLines.append(midLine())
+            }
+        }
+        tableLines.append(botLine())
+        return "```\n" + tableLines.joined(separator: "\n") + "\n```"
     }
 
     // MARK: - PlaceholderStore
