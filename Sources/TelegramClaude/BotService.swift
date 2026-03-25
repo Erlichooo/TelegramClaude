@@ -296,16 +296,52 @@ class BotService: ObservableObject {
         _ = try? await URLSession.shared.data(for: request)
     }
 
-    /// Sends the final response as MarkdownV2. Falls back to plain text if Telegram rejects it.
+    /// Sends the final response as MarkdownV2, splitting into multiple messages if needed.
     private func sendOrEditFinal(token: String, chatId: Int64, messageId: Int?, text: String) async {
-        let mdv2 = MarkdownRenderer.toMarkdownV2(text)
-        if let msgId = messageId {
-            if await editMessageMarkdown(token: token, chatId: chatId, messageId: msgId, text: mdv2) { return }
-            await editMessage(token: token, chatId: chatId, messageId: msgId, text: text)
-        } else {
-            if await sendMessageMarkdown(token: token, chatId: chatId, text: mdv2) { return }
-            await sendMessage(token: token, chatId: chatId, text: text)
+        let chunks = splitMessage(text)
+        for (i, chunk) in chunks.enumerated() {
+            let mdv2 = MarkdownRenderer.toMarkdownV2(chunk)
+            if i == 0, let msgId = messageId {
+                if await editMessageMarkdown(token: token, chatId: chatId, messageId: msgId, text: mdv2) { continue }
+                await editMessage(token: token, chatId: chatId, messageId: msgId, text: chunk)
+            } else {
+                if await sendMessageMarkdown(token: token, chatId: chatId, text: mdv2) { continue }
+                await sendMessage(token: token, chatId: chatId, text: chunk)
+            }
         }
+    }
+
+    /// Splits text into chunks ≤ 3800 chars, never breaking inside a code fence.
+    private func splitMessage(_ text: String, maxLen: Int = 3800) -> [String] {
+        guard text.count > maxLen else { return [text] }
+        var chunks: [String] = []
+        var remaining = text
+        while remaining.count > maxLen {
+            let prefix = String(remaining.prefix(maxLen))
+            // Don't split inside a code fence: walk back to before the last opening fence
+            let fenceCount = prefix.components(separatedBy: "\n```").count - 1
+            var splitPoint: String.Index
+            if fenceCount % 2 == 1 {
+                // Inside a fence — back up to just before the opening ```
+                let searchEnd = prefix.endIndex
+                if let fenceRange = prefix.range(of: "\n```", options: .backwards, range: prefix.startIndex..<searchEnd) {
+                    splitPoint = fenceRange.lowerBound
+                } else {
+                    splitPoint = prefix.endIndex
+                }
+            } else if let paraBreak = prefix.range(of: "\n\n", options: .backwards) {
+                splitPoint = paraBreak.upperBound
+            } else if let lineBreak = prefix.lastIndex(of: "\n") {
+                splitPoint = prefix.index(after: lineBreak)
+            } else {
+                splitPoint = prefix.endIndex
+            }
+            let chunk = String(remaining[..<splitPoint])
+            if !chunk.isEmpty { chunks.append(chunk) }
+            remaining = String(remaining[splitPoint...])
+        }
+        if !remaining.isEmpty { chunks.append(remaining) }
+        return chunks
     }
 
     private func editMessageMarkdown(token: String, chatId: Int64, messageId: Int, text: String) async -> Bool {

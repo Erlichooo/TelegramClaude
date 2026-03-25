@@ -5,11 +5,23 @@ PROJ_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="TelegramClaude"
 APP_BUNDLE="$PROJ_DIR/$APP_NAME.app"
 
-echo "▶ Building..."
-cd "$PROJ_DIR"
-swift build -c release 2>&1
+# Parse flags: --debug for faster dev builds, default is release
+CONFIG_FLAG="-c release"
+BINARY_DIR=".build/arm64-apple-macosx/release"
+CONFIG_LABEL="release"
+for arg in "$@"; do
+    if [ "$arg" = "--debug" ]; then
+        CONFIG_FLAG=""
+        BINARY_DIR=".build/debug"
+        CONFIG_LABEL="debug"
+    fi
+done
 
-BINARY=".build/arm64-apple-macosx/release/$APP_NAME"
+echo "▶ Building ($CONFIG_LABEL)..."
+cd "$PROJ_DIR"
+swift build $CONFIG_FLAG 2>&1
+
+BINARY="$BINARY_DIR/$APP_NAME"
 
 echo "▶ Creating .app bundle..."
 rm -rf "$APP_BUNDLE"
@@ -45,7 +57,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'EOF'
 </plist>
 EOF
 
-echo "✓ Built: $APP_BUNDLE"
+echo "✓ Built: $APP_BUNDLE ($CONFIG_LABEL)"
 echo ""
-echo "Run: open \"$APP_BUNDLE\""
-echo "Install to Applications: cp -r \"$APP_BUNDLE\" /Applications/"
+echo "Run:     open \"$APP_BUNDLE\""
+echo "Install: cp -r \"$APP_BUNDLE\" /Applications/"
