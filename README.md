@@ -82,8 +82,10 @@ you want, then reset the session.
 ## Building from Source
 
 ```bash
-git clone https://github.com/<you>/TelegramClaude
+git clone https://github.com/Erlichooo/TelegramClaude
 cd TelegramClaude
-bash build.sh
+bash build.sh        # release build (optimised)
+# or
+bash build.sh --debug   # debug build (faster compile)
 open TelegramClaude.app
 ```

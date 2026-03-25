@@ -78,8 +78,10 @@ BotService 直接轮询 Telegram，将消息通过 stdin 发给 Claude，
 ## 从源码构建
 
 ```bash
-git clone https://github.com/<you>/TelegramClaude
+git clone https://github.com/Erlichooo/TelegramClaude
 cd TelegramClaude
-bash build.sh
+bash build.sh          # release 构建（优化版）
+# 或
+bash build.sh --debug  # debug 构建（编译更快）
 open TelegramClaude.app
 ```
