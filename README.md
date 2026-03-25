@@ -13,25 +13,19 @@ in memory for dramatically lower API costs (cache hits instead of cache writes).
 
 2. **Telegram bot** — create via [@BotFather](https://t.me/BotFather), copy the token.
 
-3. **Install the Telegram plugin** — [claude.com/plugins/telegram](https://claude.com/plugins/telegram)
+3. **Save your bot token** — create `~/.claude/channels/telegram/.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=<your_token>
+   ```
 
-   In a Claude Code terminal:
+4. **Set your allowed Telegram user ID** — create `~/.claude/channels/telegram/access.json`:
+   ```json
+   {"allowFrom": ["<your_telegram_user_id>"]}
    ```
-   /plugin install telegram@claude-plugins-official
-   ```
-   > Requires [Bun](https://bun.sh): `curl -fsSL https://bun.sh/install | bash`
+   > To find your Telegram user ID, message [@userinfobot](https://t.me/userinfobot).
 
-4. **Configure your bot token**:
-   ```
-   /telegram:configure
-   ```
-   Paste your bot token when prompted. Saved to `~/.claude/channels/telegram/.env`.
-
-5. **Pair your Telegram account**:
-   ```
-   /telegram:access
-   ```
-   Follow the instructions to approve yourself as an allowed user.
+   **Shortcut:** if you have the [Telegram plugin](https://claude.com/plugins/telegram) installed,
+   you can run `/telegram:configure` and `/telegram:access` in Claude Code instead.
 
 ## Installation
 
