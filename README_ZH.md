@@ -12,25 +12,22 @@ macOS menu bar 应用，通过持久化会话将 Telegram 接入 Claude Code。
 
 2. **Telegram bot** — 通过 [@BotFather](https://t.me/BotFather) 创建，复制 token。
 
-3. **安装 Telegram 插件** — [claude.com/plugins/telegram](https://claude.com/plugins/telegram)
+3. **保存 bot token** — 创建 `~/.claude/channels/telegram/.env`：
 
-   在 Claude Code 终端运行：
    ```
-   /plugin install telegram@claude-plugins-official
+   TELEGRAM_BOT_TOKEN=<你的token>
    ```
-   > 需要先安装 [Bun](https://bun.sh)：`curl -fsSL https://bun.sh/install | bash`
 
-4. **配置 bot token**：
-   ```
-   /telegram:configure
-   ```
-   粘贴 bot token，保存到 `~/.claude/channels/telegram/.env`。
+4. **设置允许的 Telegram 用户 ID** — 创建 `~/.claude/channels/telegram/access.json`：
 
-5. **配对你的 Telegram 账户**：
+   ```json
+   {"allowFrom": ["<你的telegram用户ID>"]}
    ```
-   /telegram:access
-   ```
-   按提示将自己加入允许列表。
+
+   > 查询自己的 Telegram 用户 ID：向 [@userinfobot](https://t.me/userinfobot) 发送任意消息。
+
+   **快捷方式：** 如果已安装 [Telegram 插件](https://claude.com/plugins/telegram)，
+   可在 Claude Code 中运行 `/telegram:configure` 和 `/telegram:access` 代替手动创建。
 
 ## 安装
 
