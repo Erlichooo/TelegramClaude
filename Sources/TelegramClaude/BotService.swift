@@ -172,10 +172,11 @@ class BotService: ObservableObject {
             placeholderMsgId = await sendMessageGetId(token: token, chatId: chatId,
                                                        text: L("🎙️ Transcribing voice...", "🎙️ 正在转录语音..."))
             if let voiceURL = try? await MediaHandler.downloadFile(token: token, fileId: fileId) {
-                if let transcript = await MediaHandler.transcribe(url: voiceURL) {
+                if let transcript = await MediaHandler.transcribe(url: voiceURL), !transcript.isEmpty {
                     claudeInput = transcript
                     try? FileManager.default.removeItem(at: voiceURL)
                 } else {
+                    try? FileManager.default.removeItem(at: voiceURL)
                     let errText = L("❌ Transcription failed. Please use text instead.", "❌ 语音转录失败，请改用文字")
                     if let mid = placeholderMsgId {
                         await editMessage(token: token, chatId: chatId, messageId: mid, text: errText)
@@ -184,6 +185,14 @@ class BotService: ObservableObject {
                     }
                     return
                 }
+            } else {
+                let errText = L("❌ Failed to download voice message. Please try again.", "❌ 语音下载失败，请重试")
+                if let mid = placeholderMsgId {
+                    await editMessage(token: token, chatId: chatId, messageId: mid, text: errText)
+                } else {
+                    await sendMessage(token: token, chatId: chatId, text: errText)
+                }
+                return
             }
         }
 
@@ -298,15 +307,20 @@ class BotService: ObservableObject {
 
     /// Sends the final response as MarkdownV2, splitting into multiple messages if needed.
     private func sendOrEditFinal(token: String, chatId: Int64, messageId: Int?, text: String) async {
-        let chunks = splitMessage(text)
-        for (i, chunk) in chunks.enumerated() {
-            let mdv2 = MarkdownRenderer.toMarkdownV2(chunk)
+        // Convert first, then split — so splitMessage sees the actual MarkdownV2 size
+        // (tables expand significantly after Unicode box rendering).
+        let mdv2Full = MarkdownRenderer.toMarkdownV2(text)
+        let mdv2Chunks = splitMessage(mdv2Full)
+        let rawChunks = splitMessage(text)
+
+        for (i, mdv2) in mdv2Chunks.enumerated() {
+            let raw = i < rawChunks.count ? rawChunks[i] : text
             if i == 0, let msgId = messageId {
                 if await editMessageMarkdown(token: token, chatId: chatId, messageId: msgId, text: mdv2) { continue }
-                await editMessage(token: token, chatId: chatId, messageId: msgId, text: chunk)
+                await editMessage(token: token, chatId: chatId, messageId: msgId, text: raw)
             } else {
                 if await sendMessageMarkdown(token: token, chatId: chatId, text: mdv2) { continue }
-                await sendMessage(token: token, chatId: chatId, text: chunk)
+                await sendMessage(token: token, chatId: chatId, text: raw)
             }
         }
     }
@@ -356,6 +370,12 @@ class BotService: ObservableObject {
         guard let (data, _) = try? await URLSession.shared.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let ok = json["ok"] as? Bool else { return false }
+        if !ok {
+            let desc = json["description"] as? String ?? "unknown"
+            let offset = json["parameters"] as? [String: Any]
+            let logLine = "editMessageMarkdown FAILED: \(desc) | offset=\(offset ?? [:]) | text_prefix=\(String(truncated.prefix(200)))\n"
+            try? logLine.appendToFile(at: "/tmp/telegramclaude_debug.log")
+        }
         return ok
     }
 
@@ -369,7 +389,19 @@ class BotService: ObservableObject {
         guard let (data, _) = try? await URLSession.shared.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let ok = json["ok"] as? Bool else { return false }
+        if !ok {
+            let desc = json["description"] as? String ?? "unknown"
+            let logLine = "sendMessageMarkdown FAILED: \(desc) | text_prefix=\(String(truncated.prefix(200)))\n"
+            try? logLine.appendToFile(at: "/tmp/telegramclaude_debug.log")
+        }
         return ok
+    }
+
+    // MARK: - Debug helpers
+
+    private func debugLog(_ message: String) {
+        let line = "[\(Date())] \(message)\n"
+        try? line.appendToFile(at: "/tmp/telegramclaude_debug.log")
     }
 
     // MARK: - Cost
@@ -400,3 +432,19 @@ class BotService: ObservableObject {
     }
 }
 
+
+private extension String {
+    func appendToFile(at path: String) throws {
+        let url = URL(fileURLWithPath: path)
+        if let data = self.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: path),
+               let fh = try? FileHandle(forWritingTo: url) {
+                defer { try? fh.close() }
+                try fh.seekToEnd()
+                fh.write(data)
+            } else {
+                try data.write(to: url, options: .atomic)
+            }
+        }
+    }
+}

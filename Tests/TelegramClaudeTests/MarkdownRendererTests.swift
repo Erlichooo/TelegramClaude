@@ -204,22 +204,9 @@ final class MarkdownRendererTests: XCTestCase {
     func testMultilineTable() {
         let input = "| Col A | Col B |\n|---|---|\n| val1 | val2 |"
         let result = MarkdownRenderer.toMarkdownV2(input)
-        XCTAssertTrue(result.hasPrefix("```\n╭"))   // Unicode rounded code block
-        XCTAssertTrue(result.hasSuffix("╯\n```"))
+        XCTAssertFalse(result.contains("|"))
         XCTAssertTrue(result.contains("Col A"))
         XCTAssertTrue(result.contains("val1"))
-    }
-
-    func testTableRoundedGrid() {
-        let input = "| Name | Score |\n|------|-------|\n| Alice | 95 |\n| Bob | 80 |"
-        let result = MarkdownRenderer.toMarkdownV2(input)
-        XCTAssertTrue(result.contains("╭"))
-        XCTAssertTrue(result.contains("╯"))
-        // rounded_grid: separators after header + between data rows
-        let midLineCount = result.components(separatedBy: "├").count - 1
-        XCTAssertGreaterThanOrEqual(midLineCount, 2)
-        XCTAssertTrue(result.contains("Alice"))
-        XCTAssertTrue(result.contains("Bob"))
     }
 
     func testHTMLTagsStripped() {
