@@ -2,3 +2,18 @@
 *.o
 *.d
 TelegramClaude.app/
+
+# Release artifacts
+*.zip
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Editor / local config
+.claude/
+settings.local.json
+*.xmind
+
+# Design docs (local only)
+docs/
