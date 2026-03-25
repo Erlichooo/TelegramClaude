@@ -203,6 +203,7 @@ class BotService: ObservableObject {
         var lastEditedText = ""
         var lastEditTime = Date()
 
+        isSendingFinal = false  // reset for this new message
         isProcessing = true
         var result: GatewayResponse?
         do {
@@ -259,7 +260,6 @@ class BotService: ObservableObject {
         let isSlashCommand = claudeInput.hasPrefix("/")
         let displayText = finalText.isEmpty ? (isSlashCommand ? L("✅ Done", "✅ 执行完成") : L("(no response)", "（无回复）")) : finalText
         isSendingFinal = true
-        defer { isSendingFinal = false }
         await sendOrEditFinal(token: token, chatId: chatId, messageId: placeholderMsgId, text: displayText)
 
         messages.append(ChatMessage(role: .assistant, text: displayText, time: Date()))
