@@ -149,25 +149,49 @@ actor ClaudeGateway {
 
     private func startProcess() throws {
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: Config.claudePath)
 
-        var args = [
+        // Run claude inside a login shell so all user configs (~/.zshrc etc.)
+        // are loaded automatically — works for any shell/auth setup.
+        var claudeArgs = [
+            Config.claudePath,
             "--output-format", "stream-json",
             "--input-format", "stream-json",
             "--verbose",
             "--strict-mcp-config",
         ]
-        // Build MCP config from user-selected servers only (excludes Telegram plugin entirely)
         if let mcpJson = McpPluginConfig.buildMcpConfigJSON() {
-            args += ["--mcp-config", mcpJson]
+            claudeArgs += ["--mcp-config", mcpJson]
         }
         if let sid = currentSessionId {
-            args += ["--resume", sid]
+            claudeArgs += ["--resume", sid]
         }
-        proc.arguments = args
+        // Shell-quote each argument and join into a single command string
+        let claudeCmd = claudeArgs.map { arg in
+            "'" + arg.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }.joined(separator: " ")
+
+        let userShell: String
+        if let pw = getpwnam(NSUserName()), let sh = String(validatingUTF8: pw.pointee.pw_shell) {
+            userShell = sh
+        } else {
+            userShell = "/bin/sh"
+        }
+        // -i: interactive mode (loads .zshrc/.bashrc), -l: login mode (loads .zprofile/.bash_profile)
+        // fish uses --login instead of -l, and doesn't need -i to load config
+        let shellArgs: [String] = userShell.hasSuffix("fish")
+            ? ["--login", "-c", claudeCmd]
+            : ["-i", "-l", "-c", claudeCmd]
+
+        proc.executableURL = URL(fileURLWithPath: userShell)
+        proc.arguments = shellArgs
         proc.currentDirectoryURL = URL(fileURLWithPath: Config.workDir)
 
-        proc.environment = Config.shellEnvironment
+        // Debug log
+        let logMsg = "[\(Date())] shell=\(userShell) claudePath=\(Config.claudePath)\ncmd=\(claudeCmd)\n"
+        let logURL = URL(fileURLWithPath: "/tmp/telegramclaude_debug.log")
+        if let fh = try? FileHandle(forWritingAtPath: logURL.path) {
+            fh.seekToEndOfFile(); fh.write(logMsg.data(using: .utf8)!)
+        } else { try? logMsg.data(using: .utf8)!.write(to: logURL) }
 
         let stdinPipe = Pipe()
         let outPipe = Pipe()
