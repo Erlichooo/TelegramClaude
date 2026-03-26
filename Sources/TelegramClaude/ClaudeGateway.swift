@@ -167,8 +167,7 @@ actor ClaudeGateway {
         proc.arguments = args
         proc.currentDirectoryURL = URL(fileURLWithPath: Config.workDir)
 
-        let env = ProcessInfo.processInfo.environment
-        proc.environment = env
+        proc.environment = Config.shellEnvironment
 
         let stdinPipe = Pipe()
         let outPipe = Pipe()
