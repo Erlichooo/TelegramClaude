@@ -421,6 +421,33 @@ class BotService: ObservableObject {
         return ok
     }
 
+    private func sendMessageWithKeyboard(token: String, chatId: Int64, text: String, keyboard: [String: Any]) async {
+        let body: [String: Any] = ["chat_id": chatId, "text": text, "reply_markup": keyboard]
+        var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/sendMessage")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    private func editMessageWithKeyboard(token: String, chatId: Int64, messageId: Int, text: String, keyboard: [String: Any]) async {
+        let body: [String: Any] = ["chat_id": chatId, "message_id": messageId, "text": text, "reply_markup": keyboard]
+        var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/editMessageText")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    private func answerCallbackQuery(token: String, callbackId: String, text: String) async {
+        let body: [String: Any] = ["callback_query_id": callbackId, "text": text]
+        var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/answerCallbackQuery")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     // MARK: - Permission Monitor
 
     private func permMonitorLoop() async {
@@ -513,13 +540,6 @@ class BotService: ObservableObject {
         await editMessage(token: token, chatId: chatId, messageId: msgId,
                           text: "🔐 Permission: \(pending.toolName)\n\n\(label)")
     }
-
-    // Temporary stub — will be replaced in Task 5
-    private func sendMessageWithKeyboard(token: String, chatId: Int64, text: String, keyboard: [String: Any]) async {}
-    // Temporary stub — will be replaced in Task 5
-    private func answerCallbackQuery(token: String, callbackId: String, text: String) async {}
-    // Temporary stub — will be replaced in Task 5
-    private func editMessageWithKeyboard(token: String, chatId: Int64, messageId: Int, text: String, keyboard: [String: Any]) async {}
 
     // MARK: - Debug helpers
 
