@@ -83,29 +83,37 @@ enum McpPluginConfig {
         return list
     }
 
-    /// 构建只包含用户启用服务器（不含 Telegram）的 MCP config JSON 字符串
-    /// 用于 --strict-mcp-config --mcp-config，让子进程完全不加载 Telegram MCP server
+    /// 构建 MCP config JSON 字符串
+    /// 始终包含内置 permission relay server（不可禁用）+ 用户启用的服务器
     static func buildMcpConfigJSON() -> String? {
+        var mcpServers: [String: Any] = [:]
+
+        // 内置 permission relay：始终注入，处理 stream-json 模式下的权限请求
+        let bun = Config.bunPath
+        if !bun.isEmpty {
+            mcpServers["telegramclaude-permission"] = [
+                "command": bun,
+                "args": [Config.permServerPath]
+            ]
+        }
+
+        // 用户启用的服务器（来自 ~/.mcp.json）
         let enabled = enabledWildcards()
-        guard !enabled.isEmpty else { return nil }
-
-        // 从 ~/.mcp.json 读取全局服务器配置
-        let globalMcpPath = NSHomeDirectory() + "/.mcp.json"
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: globalMcpPath)),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let allServers = json["mcpServers"] as? [String: Any] else { return nil }
-
-        // 只保留用户启用的服务器（wildcard 格式 mcp__serverName__*）
-        var selectedServers: [String: Any] = [:]
-        for (serverName, serverConfig) in allServers {
-            let wildcard = "mcp__\(serverName)__*"
-            if enabled.contains(wildcard) {
-                selectedServers[serverName] = serverConfig
+        if !enabled.isEmpty {
+            let globalMcpPath = NSHomeDirectory() + "/.mcp.json"
+            if let data = try? Data(contentsOf: URL(fileURLWithPath: globalMcpPath)),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let allServers = json["mcpServers"] as? [String: Any] {
+                for (serverName, serverConfig) in allServers {
+                    if enabled.contains("mcp__\(serverName)__*") {
+                        mcpServers[serverName] = serverConfig
+                    }
+                }
             }
         }
 
-        guard !selectedServers.isEmpty else { return nil }
-        let config: [String: Any] = ["mcpServers": selectedServers]
+        guard !mcpServers.isEmpty else { return nil }
+        let config: [String: Any] = ["mcpServers": mcpServers]
         guard let configData = try? JSONSerialization.data(withJSONObject: config),
               let configStr = String(data: configData, encoding: .utf8) else { return nil }
         return configStr

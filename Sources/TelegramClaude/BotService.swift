@@ -113,7 +113,17 @@ class BotService: ObservableObject {
             do {
                 let updates = try await fetchUpdates(token: token)
                 for update in updates {
-                    await handleUpdate(update, token: token)
+                    // 所有 update 都非阻塞：Claude 等待权限时 pollLoop 必须继续 fetch
+                    if let uid = update["update_id"] as? Int64 { offset = uid + 1 }
+                    let u = update
+                    Task { [weak self] in
+                        guard let self else { return }
+                        if let cq = u["callback_query"] as? [String: Any] {
+                            await self.handleCallbackQuery(cq, token: token)
+                        } else {
+                            await self.handleUpdate(u, token: token)
+                        }
+                    }
                 }
             } catch {
                 if !Task.isCancelled {
@@ -448,6 +458,15 @@ class BotService: ObservableObject {
         _ = try? await URLSession.shared.data(for: request)
     }
 
+    private func deleteMessage(token: String, chatId: Int64, messageId: Int) async {
+        let body: [String: Any] = ["chat_id": chatId, "message_id": messageId]
+        var request = URLRequest(url: URL(string: "https://api.telegram.org/bot\(token)/deleteMessage")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     // MARK: - Permission Monitor
 
     private func permMonitorLoop() async {
@@ -539,6 +558,8 @@ class BotService: ObservableObject {
         await answerCallbackQuery(token: token, callbackId: callbackId, text: label)
         await editMessage(token: token, chatId: chatId, messageId: msgId,
                           text: "🔐 Permission: \(pending.toolName)\n\n\(label)")
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await deleteMessage(token: token, chatId: chatId, messageId: msgId)
     }
 
     // MARK: - Debug helpers

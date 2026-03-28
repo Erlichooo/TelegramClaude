@@ -158,6 +158,7 @@ actor ClaudeGateway {
             "--input-format", "stream-json",
             "--verbose",
             "--strict-mcp-config",
+            "--permission-prompt-tool", "mcp__telegramclaude-permission__permissionRequest",
         ]
         if let mcpJson = McpPluginConfig.buildMcpConfigJSON() {
             claudeArgs += ["--mcp-config", mcpJson]
@@ -187,7 +188,7 @@ actor ClaudeGateway {
         proc.currentDirectoryURL = URL(fileURLWithPath: Config.workDir)
 
         // Debug log
-        let logMsg = "[\(Date())] shell=\(userShell) claudePath=\(Config.claudePath)\ncmd=\(claudeCmd)\n"
+        let logMsg = "[\(Date())] shell=\(userShell) claudePath=\(Config.claudePath) bunPath=\(Config.bunPath)\ncmd=\(claudeCmd)\n"
         let logURL = URL(fileURLWithPath: "/tmp/telegramclaude_debug.log")
         if let fh = try? FileHandle(forWritingAtPath: logURL.path) {
             fh.seekToEndOfFile(); fh.write(logMsg.data(using: .utf8)!)
@@ -223,6 +224,10 @@ actor ClaudeGateway {
         process = proc
         stdinHandle = stdinPipe.fileHandleForWriting
         self.stdoutPipe = outPipe
+
+        // 写入子进程 PID，供 PermissionRequest hook 做 session 检测
+        let claudePid = "\(proc.processIdentifier)"
+        try? claudePid.write(toFile: Config.appSupportDir + "/running.flag", atomically: true, encoding: .utf8)
     }
 
     // MARK: - stdout 解析
@@ -243,8 +248,8 @@ actor ClaudeGateway {
 
         let type_ = json["type"] as? String
 
-        // system/init：保存 session_id（仅首次）
-        if type_ == "system", let sid = json["session_id"] as? String, currentSessionId == nil {
+        // system/init：保存 session_id
+        if type_ == "system", let sid = json["session_id"] as? String {
             currentSessionId = sid
             try? sid.write(toFile: sessionPath, atomically: true, encoding: .utf8)
         }
@@ -311,6 +316,7 @@ actor ClaudeGateway {
         process = nil
         stdinHandle = nil
         stdoutPipe = nil
+        try? FileManager.default.removeItem(atPath: Config.appSupportDir + "/running.flag")
 
         // 先处理管道残留数据（可能含 result 行）
         if !remaining.isEmpty {
