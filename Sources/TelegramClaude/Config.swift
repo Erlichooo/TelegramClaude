@@ -29,6 +29,18 @@ enum Config {
         return dir
     }()
 
+    static let permRequestDir: String = {
+        let dir = appSupportDir + "/perm_request"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    static let permResponseDir: String = {
+        let dir = appSupportDir + "/perm_response"
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
     static let claudePath: String = {
         func runWhich(env: [String: String]? = nil) -> String {
             let pipe = Pipe()
