@@ -140,6 +140,11 @@ class BotService: ObservableObject {
         guard let updateId = update["update_id"] as? Int64 else { return }
         offset = updateId + 1
 
+        // callback_query：权限按钮回调
+        if let cq = update["callback_query"] as? [String: Any] {
+            await handleCallbackQuery(cq, token: token)
+            return
+        }
 
         guard let message = update["message"] as? [String: Any],
               let chat = message["chat"] as? [String: Any],
@@ -164,6 +169,11 @@ class BotService: ObservableObject {
         }
         if text == "/cost" {
             await sendMessage(token: token, chatId: chatId, text: sessionCostString())
+            return
+        }
+        if text == "/stop" {
+            await sendMessage(token: token, chatId: chatId, text: L("⏹ Bot stopped", "⏹ 已停止"))
+            stop()
             return
         }
 
@@ -451,8 +461,61 @@ class BotService: ObservableObject {
         }
     }
 
+    private func handleCallbackQuery(_ cq: [String: Any], token: String) async {
+        guard let callbackId = cq["id"] as? String,
+              let data = cq["data"] as? String,
+              let from = cq["from"] as? [String: Any],
+              let message = cq["message"] as? [String: Any],
+              let msgId = message["message_id"] as? Int,
+              let chat = message["chat"] as? [String: Any],
+              let chatId = chat["id"] as? Int64 else { return }
+
+        let senderId = "\(from["id"] ?? "")"
+        guard Config.allowedUserIDs.contains(senderId) else {
+            await answerCallbackQuery(token: token, callbackId: callbackId, text: "Not authorized")
+            return
+        }
+
+        let parts = data.components(separatedBy: ":")
+        guard parts.count == 3, parts[0] == "perm",
+              ["allow", "deny", "more"].contains(parts[1]) else { return }
+        let action = parts[1]
+        let requestId = parts[2]
+
+        guard let pending = pendingPermissions[requestId] else {
+            await answerCallbackQuery(token: token, callbackId: callbackId, text: "Already resolved")
+            return
+        }
+
+        if action == "more" {
+            let expanded = "🔐 Permission: \(pending.toolName)\n\ntool_name: \(pending.toolName)\ndescription: \(pending.description)\ninput_preview:\n\(pending.inputPreview)"
+            let keyboard: [String: Any] = ["inline_keyboard": [[
+                ["text": "✅ Allow", "callback_data": "perm:allow:\(requestId)"],
+                ["text": "❌ Deny",  "callback_data": "perm:deny:\(requestId)"]
+            ]]]
+            await editMessageWithKeyboard(token: token, chatId: chatId, messageId: msgId,
+                                          text: expanded, keyboard: keyboard)
+            await answerCallbackQuery(token: token, callbackId: callbackId, text: "")
+            return
+        }
+
+        // allow or deny
+        let label = action == "allow" ? "✅ 已允许" : "❌ 已拒绝"
+        let responseData = try? JSONSerialization.data(withJSONObject: ["behavior": action])
+        let responsePath = Config.permResponseDir + "/\(requestId).json"
+        try? responseData?.write(to: URL(fileURLWithPath: responsePath))
+        pendingPermissions.removeValue(forKey: requestId)
+        await answerCallbackQuery(token: token, callbackId: callbackId, text: label)
+        await editMessage(token: token, chatId: chatId, messageId: msgId,
+                          text: "🔐 Permission: \(pending.toolName)\n\n\(label)")
+    }
+
     // Temporary stub — will be replaced in Task 5
     private func sendMessageWithKeyboard(token: String, chatId: Int64, text: String, keyboard: [String: Any]) async {}
+    // Temporary stub — will be replaced in Task 5
+    private func answerCallbackQuery(token: String, callbackId: String, text: String) async {}
+    // Temporary stub — will be replaced in Task 5
+    private func editMessageWithKeyboard(token: String, chatId: Int64, messageId: Int, text: String, keyboard: [String: Any]) async {}
 
     // MARK: - Debug helpers
 
