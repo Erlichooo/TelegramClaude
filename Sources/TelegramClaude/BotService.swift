@@ -445,6 +445,7 @@ class BotService: ObservableObject {
                         token: token, chatId: chatId,
                         text: "🔐 Permission: \(toolName)", keyboard: keyboard)
                 }
+                guard !Task.isCancelled else { break }
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
