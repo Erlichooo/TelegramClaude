@@ -91,6 +91,9 @@ class BotService: ObservableObject {
         pollingTask = Task { [weak self] in
             await self?.pollLoop(token: token)
         }
+        permMonitorTask = Task { [weak self] in
+            await self?.permMonitorLoop()
+        }
     }
 
     func stop() {
@@ -98,6 +101,9 @@ class BotService: ObservableObject {
         statusMessage = L("Stopped", "已停止")
         pollingTask?.cancel()
         pollingTask = nil
+        permMonitorTask?.cancel()
+        permMonitorTask = nil
+        pendingPermissions.removeAll()
     }
 
     // MARK: - Polling
@@ -404,6 +410,48 @@ class BotService: ObservableObject {
         }
         return ok
     }
+
+    // MARK: - Permission Monitor
+
+    private func permMonitorLoop() async {
+        // 触发目录创建
+        _ = Config.permRequestDir
+        _ = Config.permResponseDir
+        while !Task.isCancelled {
+            let files = (try? FileManager.default.contentsOfDirectory(atPath: Config.permRequestDir)) ?? []
+            for file in files where file.hasSuffix(".json") {
+                let path = Config.permRequestDir + "/" + file
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let requestId = json["request_id"] as? String,
+                      let toolName = json["tool_name"] as? String else {
+                    try? FileManager.default.removeItem(atPath: path)
+                    continue
+                }
+                let description = json["description"] as? String ?? toolName
+                let inputPreview = json["input_preview"] as? String ?? ""
+                try? FileManager.default.removeItem(atPath: path)
+                pendingPermissions[requestId] = PendingPermission(
+                    toolName: toolName, description: description, inputPreview: inputPreview)
+                guard let token = Config.botToken else { continue }
+                let keyboard: [String: Any] = ["inline_keyboard": [[
+                    ["text": "See more", "callback_data": "perm:more:\(requestId)"],
+                    ["text": "✅ Allow",  "callback_data": "perm:allow:\(requestId)"],
+                    ["text": "❌ Deny",   "callback_data": "perm:deny:\(requestId)"]
+                ]]]
+                for chatIdStr in Config.allowedUserIDs {
+                    guard let chatId = Int64(chatIdStr) else { continue }
+                    await sendMessageWithKeyboard(
+                        token: token, chatId: chatId,
+                        text: "🔐 Permission: \(toolName)", keyboard: keyboard)
+                }
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    // Temporary stub — will be replaced in Task 5
+    private func sendMessageWithKeyboard(token: String, chatId: Int64, text: String, keyboard: [String: Any]) async {}
 
     // MARK: - Debug helpers
 
