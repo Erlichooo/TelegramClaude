@@ -503,7 +503,11 @@ class BotService: ObservableObject {
         let label = action == "allow" ? "✅ 已允许" : "❌ 已拒绝"
         let responseData = try? JSONSerialization.data(withJSONObject: ["behavior": action])
         let responsePath = Config.permResponseDir + "/\(requestId).json"
-        try? responseData?.write(to: URL(fileURLWithPath: responsePath))
+        do {
+            try responseData?.write(to: URL(fileURLWithPath: responsePath))
+        } catch {
+            debugLog("perm response write failed: \(error) path=\(responsePath)")
+        }
         pendingPermissions.removeValue(forKey: requestId)
         await answerCallbackQuery(token: token, callbackId: callbackId, text: label)
         await editMessage(token: token, chatId: chatId, messageId: msgId,
