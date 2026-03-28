@@ -10,6 +10,12 @@ struct ChatMessage: Identifiable {
     enum Role { case user, assistant }
 }
 
+struct PendingPermission {
+    let toolName: String
+    let description: String
+    let inputPreview: String
+}
+
 @MainActor
 class BotService: ObservableObject {
     @Published var isRunning = false
@@ -29,6 +35,8 @@ class BotService: ObservableObject {
     private var offset: Int64 = 0
     private var isProcessing = false
     private var isSendingFinal = false
+    private var permMonitorTask: Task<Void, Never>?
+    private var pendingPermissions: [String: PendingPermission] = [:]
 
     // MARK: - Session
 
